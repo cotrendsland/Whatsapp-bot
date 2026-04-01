@@ -11,7 +11,7 @@ from sheets import registrar_pedido
 app = FastAPI(title="WhatsApp AI Bot")
 twilio_client = Client(config.TWILIO_SID, config.TWILIO_TOKEN)
 
-VENDEDOR = "whatsapp:+573226706141"
+VENDEDOR = "whatsapp:+573102897401"
 
 def send_whatsapp(to, body):
     twilio_client.messages.create(
@@ -57,11 +57,11 @@ async def webhook(From: str = Form(...), Body: str = Form(...)):
     triggers = ["humano", "asesor", "persona", "agente"]
     if any(w in text.lower() for w in triggers):
         set_human_mode(phone, True)
-        reply = "Un asesor se comunicara contigo pronto. Horario: Lun-Sab 9am-7pm."
+        reply = "Un asesor se comunicará contigo pronto. Horario: Lun-Sab 9am-7pm."
         send_whatsapp(phone, reply)
         save_messages(phone, text, reply)
         alerta = ("CLIENTE NECESITA ASESOR\n"
-                  "Numero: " + phone.replace("whatsapp:", "") + "\n"
+                  "Número: " + phone.replace("whatsapp:", "") + "\n"
                   "Mensaje: " + text + "\n\n"
                   "Cuando termines escribe:\n"
                   "/bot-on " + phone.replace("whatsapp:", ""))
@@ -74,9 +74,9 @@ async def webhook(From: str = Form(...), Body: str = Form(...)):
 
         if "TRANSFERIR_HUMANO" in reply:
             set_human_mode(phone, True)
-            reply = "No tengo esa informacion. Un asesor te contactara pronto."
+            reply = "No tengo esa información. Un asesor te contactará pronto."
             alerta = ("CLIENTE NECESITA ASESOR\n"
-                      "Numero: " + phone.replace("whatsapp:", "") + "\n"
+                      "Número: " + phone.replace("whatsapp:", "") + "\n"
                       "Cuando termines escribe:\n"
                       "/bot-on " + phone.replace("whatsapp:", ""))
             send_whatsapp(VENDEDOR, alerta)
@@ -92,27 +92,36 @@ async def webhook(From: str = Form(...), Body: str = Form(...)):
             exito = False
             try:
                 nombre     = partes[1].strip()
-                referencia = partes[2].strip()
-                producto   = partes[3].strip()
-                talla      = partes[4].strip()
-                color      = partes[5].strip()
-                cantidad   = int(partes[6].strip())
-                precio_raw = partes[7].strip().replace("$","").replace(".","").replace(",","")
+                cedula     = partes[2].strip()
+                referencia = partes[3].strip()
+                producto   = partes[4].strip()
+                talla      = partes[5].strip()
+                color      = partes[6].strip()
+                cantidad   = int(partes[7].strip())
+                precio_raw = partes[8].strip().replace("$","").replace(".","").replace(",","")
                 precio     = int(precio_raw)
                 total      = cantidad * precio
-                ok = await registrar_pedido(phone, nombre, referencia, producto, talla, color, cantidad, precio)
+                direccion  = partes[9].strip()
+                barrio     = partes[10].strip()
+                ciudad     = partes[11].strip()
+
+                ok = await registrar_pedido(
+                    phone, nombre, cedula, referencia, producto,
+                    talla, color, cantidad, precio, direccion, barrio, ciudad
+                )
                 if ok:
-                    reply = ("Pedido registrado exitosamente.\n"
+                    reply = ("Pedido registrado exitosamente 🎉\n"
                              "Producto: " + producto + "\n"
                              "Talla: " + talla + " | Color: " + color + "\n"
                              "Cantidad: " + str(cantidad) + "\n"
-                             "Total: $" + "{:,}".format(total).replace(",", ".") + "\n\n"
-                             "Un asesor te confirmara el pedido pronto.")
+                             "Total: $" + "{:,}".format(total).replace(",", ".") + "\n"
+                             "Envío a: " + direccion + ", " + barrio + ", " + ciudad + "\n\n"
+                             "Un asesor te confirmará el pedido y el costo de envío pronto.")
                     exito = True
             except Exception as ep:
                 print("[ERROR PARSE] " + str(ep))
             if not exito:
-                reply = "Hubo un problema procesando tu pedido. Un asesor te ayudara."
+                reply = "Hubo un problema procesando tu pedido. Un asesor te ayudará."
 
         save_messages(phone, text, reply)
         send_whatsapp(phone, reply)
@@ -120,7 +129,7 @@ async def webhook(From: str = Form(...), Body: str = Form(...)):
 
     except Exception as e:
         print("[ERROR] " + str(e))
-        send_whatsapp(phone, "Tuve un problema tecnico. Intenta en unos minutos.")
+        send_whatsapp(phone, "Tuve un problema técnico. Intenta en unos minutos.")
 
     return PlainTextResponse("", status_code=200)
 
