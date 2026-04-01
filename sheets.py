@@ -5,7 +5,7 @@ import json
 
 SHEET_ID = "1DlVFqCplp_TgjEoXri0CwWe87kxqB11nixmS0eKBz3U"
 BASE_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-y47lkAuFzbCS8v7sJ5Di6PcKb1xSGenFDdZVF8paP9-fJHdBva3-zsVk9CHUHJkk/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjY12qWXNBhPEYkX9kImThqQUoVMFhSTo6RwprgqjNwQqDMq5lQ4tUWjXDJoXms3wR/exec"
 
 async def get_catalogo() -> str:
     url = BASE_URL + "&sheet=Catalogo"
