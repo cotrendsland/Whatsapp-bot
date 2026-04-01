@@ -5,7 +5,7 @@ import json
 
 SHEET_ID = "1DlVFqCplp_TgjEoXri0CwWe87kxqB11nixmS0eKBz3U"
 BASE_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhLRgBYpb1dg9E3x99inQ0pdFMWPucNkjol3tSorB5HRnAsNAzylBTE_EHZC9236N4/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3ukDf6clkKqXoOu-qJkcnmmrY2Gy_eLDsI9sAJu_OOedp0q_fK-568Us8-uUaC5L0/exec"
 
 # ── Precio por referencia ─────────────────────────────────────────────────────
 # El inventario no tiene columna de precio, se mantiene este mapa.
