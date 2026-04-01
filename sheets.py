@@ -208,15 +208,14 @@ async def registrar_pedido(telefono: str, nombre: str, cedula: str,
                 timeout=15.0
             )
 
-        # Apps Script suele devolver un redirect 302 → seguirlo manualmente
+        # Apps Script devuelve redirect 302 → seguirlo con GET (no POST)
+        # La URL echo de Google solo acepta GET; hacer POST devuelve HTML
         if r1.status_code in (301, 302, 303, 307, 308) and "location" in r1.headers:
             redirect_url = r1.headers["location"]
             print("[REDIRECT] " + redirect_url)
             async with httpx.AsyncClient() as client:
-                response = await client.post(
+                response = await client.get(
                     redirect_url,
-                    content=json.dumps(data),
-                    headers={"Content-Type": "application/json"},
                     timeout=15.0
                 )
         else:
