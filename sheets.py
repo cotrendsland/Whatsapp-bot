@@ -8,7 +8,7 @@ BASE_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjY12qWXNBhPEYkX9kImThqQUoVMFhSTo6RwprgqjNwQqDMq5lQ4tUWjXDJoXms3wR/exec"
 
 async def get_catalogo() -> str:
-    url = BASE_URL + "&sheet=Catalogo"
+    url = BASE_URL + "&sheet=INVENTARIO"
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
 
