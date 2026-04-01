@@ -6,9 +6,10 @@ import json
 SHEET_ID = "1DlVFqCplp_TgjEoXri0CwWe87kxqB11nixmS0eKBz3U"
 BASE_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv"
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwxcRzOQbdmuwoFnn8Zo4raEsNwP5MmEtABny_PaOODPWAOkJKKzDY7PRW4ek91sQyf/exec"
-# ── Precio por referencia (ajusta si tienes precios en el Sheet) ──────────────
-# Como el inventario NO tiene columna de precio, se mantiene un mapa fijo.
-# Si en el futuro agregas precio al Sheet, avísame y lo leemos desde allí.
+
+# ── Precio por referencia ─────────────────────────────────────────────────────
+# El inventario no tiene columna de precio, se mantiene este mapa.
+# Si en el futuro agregas precio al Sheet, puedes leerlo desde allí.
 PRECIOS = {
     # LOCAL PEOPLE
     "LPRS": 89000, "LPRM": 89000, "LPRL": 89000, "LPRXL": 89000,
@@ -42,16 +43,24 @@ PRECIOS = {
     "CERS": 95000, "CERM": 95000,
 }
 
+
 async def get_catalogo() -> str:
     """
-    Lee la hoja INVENTARIO cuya estructura real es:
-      Col A: Nombre grupo (puede estar vacío en filas de talla/color)
-      Col B: Código/Referencia (ej. LPRS, SNM, ...)
-      Col C: Descripción completa
-      Col D: Stock inicio de mes
-      Col E: Ingresos
-      Col F: Ventas
-      Col G: Stock actual (= D + E - F)
+    Lee la hoja INVENTARIO con estructura:
+      Col A (row[0]): PRODUCTO       — nombre del grupo (vacío en filas de variante)
+      Col B (row[1]): CÓDIGO PRODUCTO — referencia/código (ej. SNM, LPRS)
+      Col C (row[2]): DESCRIPCIÓN    — descripción completa de cada variante
+      Col D (row[3]): Stock inicio de mes
+      Col E (row[4]): INGRESOS
+      Col F (row[5]): VENTAS
+      Col G (row[6]): STOCK actual
+
+    Agrupa por nombre de producto (col A) y muestra:
+      - Nombre del producto (col A del grupo)
+      - Descripción completa de cada variante (col C)
+      - Tallas con stock > 0
+      - Precio
+      - Referencias internas (solo para el bot, nunca se muestran al cliente)
     """
     url = BASE_URL + "&sheet=INVENTARIO"
     async with httpx.AsyncClient() as client:
@@ -60,96 +69,126 @@ async def get_catalogo() -> str:
     reader = csv.reader(io.StringIO(response.text))
     rows = list(reader)
 
-    # Agrupar por nombre de producto (col A cuando no está vacía)
-    # Estructura: { "SAFARI NEGRA": { "ref_talla": {"desc", "stock", "precio"} } }
-    grupos = {}
-    grupo_actual = "Sin categoría"
+    # grupos: { "SAFARI NEGRA": [ {ref, desc, talla, stock, precio}, ... ] }
+    grupos: dict = {}
+    grupo_actual = ""
+    nombre_producto_actual = ""  # Nombre limpio del grupo (col A)
 
     for row in rows:
         if len(row) < 7:
             continue
 
-        col_a = row[0].strip()
-        col_b = row[1].strip()   # referencia/código
-        col_c = row[2].strip()   # descripción
-        col_g = row[6].strip()   # stock actual
+        col_a = row[0].strip()   # PRODUCTO (nombre grupo)
+        col_b = row[1].strip()   # CÓDIGO PRODUCTO (referencia)
+        col_c = row[2].strip()   # DESCRIPCIÓN completa
+        col_g = row[6].strip()   # STOCK actual
 
         # Saltar encabezado
-        if col_a == "PRODUCTO" or col_b == "CÓDIGO PRODUCTO":
+        if col_b == "CÓDIGO PRODUCTO" or col_a == "PRODUCTO":
             continue
 
-        # Si col_b está vacía o col_c vacía, saltar
+        # Saltar filas sin código o sin descripción
         if not col_b or not col_c:
             continue
 
-        # Actualizar grupo si col_a tiene valor
+        # Si col A tiene valor, actualizar el grupo actual
         if col_a:
             grupo_actual = col_a
+            nombre_producto_actual = col_a.title()
 
-        # Parsear stock
-        try:
-            stock = int(col_g)
-        except ValueError:
+        # Si aún no tenemos grupo definido, saltar
+        if not grupo_actual:
             continue
 
-        # Solo incluir con stock > 0
+        # Parsear stock — manejar celdas con fórmulas que pueden traer decimales
+        try:
+            stock = int(float(col_g))
+        except (ValueError, TypeError):
+            continue
+
+        # Solo incluir variantes con stock positivo
         if stock <= 0:
             continue
 
-        # Extraer talla desde la descripción (última palabra en mayúscula)
-        partes = col_c.split()
-        talla = partes[-1].upper() if partes else ""
-
-        # Precio
+        # Precio desde el mapa fijo
         ref_upper = col_b.upper()
-        precio = PRECIOS.get(ref_upper, 0)
-        precio_fmt = "${:,}".format(precio).replace(",", ".") if precio else "Consultar"
+        precio_val = PRECIOS.get(ref_upper, 0)
+        precio_fmt = "${:,}".format(precio_val).replace(",", ".") if precio_val else "Consultar"
+
+        # Extraer talla: última palabra de la descripción en mayúsculas
+        # Ej: "Chaqueta Safari Negra M" → talla = "M"
+        partes_desc = col_c.split()
+        talla = partes_desc[-1].upper() if partes_desc else ""
 
         if grupo_actual not in grupos:
-            grupos[grupo_actual] = []
+            grupos[grupo_actual] = {
+                "nombre": nombre_producto_actual,
+                "items": []
+            }
 
-        grupos[grupo_actual].append({
-            "ref": col_b,
-            "desc": col_c,
-            "talla": talla,
-            "stock": stock,
+        grupos[grupo_actual]["items"].append({
+            "ref":    col_b,
+            "desc":   col_c,          # descripción completa tal como viene del Sheet
+            "talla":  talla,
+            "stock":  stock,
             "precio": precio_fmt,
+            "precio_val": precio_val,
         })
 
     if not grupos:
         return "No hay productos disponibles en este momento."
 
-    # Construir texto del catálogo agrupado por producto
+    # ── Construir texto del catálogo ──────────────────────────────────────────
+    # Formato por grupo:
+    #   - [Nombre Producto] — $precio
+    #     Descripción: [desc variante 1], [desc variante 2], ...
+    #     Tallas disponibles: S, M, L, XL
+    #     Refs (interno): S:SNS (stock 3) | M:SNM (stock 5) | ...
     lineas = []
-    for nombre_grupo, items in grupos.items():
-        # Nombre limpio del grupo
-        nombre_limpio = nombre_grupo.title()
-        tallas = ", ".join(i["talla"] for i in items)
-        precio = items[0]["precio"]  # mismo precio para todo el grupo
+    for grupo_key, grupo_data in grupos.items():
+        items = grupo_data["items"]
+        nombre_limpio = grupo_data["nombre"]
+        precio_display = items[0]["precio"]
 
-        # Refs disponibles (para uso interno del bot)
-        refs = " | ".join(
+        # Descripciones únicas de las variantes disponibles
+        descripciones = list(dict.fromkeys(i["desc"] for i in items))
+        desc_str = " / ".join(descripciones)
+
+        # Tallas disponibles
+        tallas_str = ", ".join(i["talla"] for i in items)
+
+        # Referencias internas (el bot las usa internamente, nunca las menciona al cliente)
+        refs_str = " | ".join(
             f"{i['talla']}:{i['ref']} (stock {i['stock']})"
             for i in items
         )
 
         lineas.append(
-            f"- {nombre_limpio} | Tallas disponibles: {tallas} | Precio: {precio} | Refs: {refs}"
+            f"- {nombre_limpio} | Precio: {precio_display}\n"
+            f"  Descripción: {desc_str}\n"
+            f"  Tallas disponibles: {tallas_str}\n"
+            f"  Refs: {refs_str}"
         )
 
-    return "\n".join(lineas)
+    return "\n\n".join(lineas)
 
 
 async def registrar_pedido(telefono: str, nombre: str, cedula: str,
                             referencia: str, producto: str, talla: str,
                             color: str, cantidad: int, precio: int,
                             direccion: str, barrio: str, ciudad: str) -> bool:
+    """
+    Envía el pedido al Apps Script, que se encarga de:
+      1. Registrar en la hoja BASE 2026
+      2. Descontar stock en la hoja VENTAS del INVENTARIO
+      3. Notificar al vendedor por WhatsApp y email
+    """
     try:
         data = {
             "telefono":   telefono,
             "nombre":     nombre,
             "cedula":     cedula,
-            "referencia": referencia.upper(),   # ← siempre en mayúscula para coincidir con Sheet
+            "referencia": referencia.upper(),  # siempre mayúscula para coincidir con el Sheet
             "producto":   producto,
             "talla":      talla,
             "color":      color,
@@ -160,6 +199,7 @@ async def registrar_pedido(telefono: str, nombre: str, cedula: str,
             "ciudad":     ciudad
         }
 
+        # Primer intento (sin seguir redirects para capturar la URL real)
         async with httpx.AsyncClient(follow_redirects=False) as client:
             r1 = await client.post(
                 APPS_SCRIPT_URL,
@@ -168,6 +208,7 @@ async def registrar_pedido(telefono: str, nombre: str, cedula: str,
                 timeout=15.0
             )
 
+        # Apps Script suele devolver un redirect 302 → seguirlo manualmente
         if r1.status_code in (301, 302, 303, 307, 308) and "location" in r1.headers:
             redirect_url = r1.headers["location"]
             print("[REDIRECT] " + redirect_url)
@@ -182,6 +223,7 @@ async def registrar_pedido(telefono: str, nombre: str, cedula: str,
             response = r1
 
         print("[APPS SCRIPT RAW] " + response.text[:300])
+
         result = response.json()
         if result.get("status") == "ok":
             print("[PEDIDO OK] " + result.get("pedido", ""))
@@ -189,6 +231,7 @@ async def registrar_pedido(telefono: str, nombre: str, cedula: str,
         else:
             print("[PEDIDO ERROR] " + str(result))
             return False
+
     except Exception as e:
         print("[ERROR PEDIDO] " + str(e))
         return False
